@@ -2,6 +2,8 @@
 #if HAL_MOUNT_ENABLED
 #include <AP_SerialManager/AP_SerialManager.h>
 
+#include <AP_AHRS/AP_AHRS.h>
+
 extern const AP_HAL::HAL& hal;
 
 void AP_Mount_Alexmos::init()
@@ -104,7 +106,7 @@ void AP_Mount_Alexmos::send_mount_status(mavlink_channel_t chan)
     }
 
     get_angles();
-    mavlink_msg_mount_status_send(chan, 0, 0, _current_angle.y*100, _current_angle.x*100, _current_angle.z*100);
+    mavlink_msg_mount_status_send(chan, 0, 0, _current_angle.y*100, _current_angle.x*100, _current_angle.z*100, _state._mode);
 }
 
 /*
@@ -212,7 +214,7 @@ void AP_Mount_Alexmos::parse_body()
     switch (_command_id ) {
         case CMD_BOARD_INFO:
             _board_version = _buffer.version._board_version/ 10;
-            _current_firmware_version = _buffer.version._firmware_version / 1000.0f ;
+            _current_firmware_version = _buffer.version._firmware_version * 0.001f ;
             _firmware_beta_version = _buffer.version._firmware_version % 10 ;
             _gimbal_3axis = (_buffer.version._board_features & 0x1);
             _gimbal_bat_monitoring = (_buffer.version._board_features & 0x2);

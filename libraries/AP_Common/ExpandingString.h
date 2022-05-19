@@ -18,7 +18,9 @@
 
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
+#include <AP_Common/AP_Common.h>
+
+#include <stdint.h>
 
 class ExpandingString {
 public:
@@ -36,8 +38,13 @@ public:
     // print into the string
     void printf(const char *format, ...) FMT_PRINTF(2,3);
 
-    // append data to the string
-    void append(const char *s, uint32_t len);
+    // append data to the string. s can be null for zero fill
+    bool append(const char *s, uint32_t len);
+
+    // set address to custom external buffer
+    void set_buffer(char *s, uint32_t total_len, uint32_t used_len);
+    // zero out the string
+    void reset() { used = 0; }
 
     // destructor
     ~ExpandingString();
@@ -51,6 +58,7 @@ private:
     uint32_t buflen;
     uint32_t used;
     bool allocation_failed;
+    bool external_buffer;
 
     // try to expand the buffer
     bool expand(uint32_t min_needed) WARN_IF_UNUSED;

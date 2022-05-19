@@ -19,11 +19,14 @@
 
 #pragma once
 
-#include <AP_HAL/AP_HAL.h>
-
 #include "AP_GPS.h"
 #include "GPS_Backend.h"
 
+#ifndef AP_GPS_ERB_ENABLED
+  #define AP_GPS_ERB_ENABLED AP_GPS_BACKEND_DEFAULT_ENABLED
+#endif
+
+#if AP_GPS_ERB_ENABLED
 class AP_GPS_ERB : public AP_GPS_Backend
 {
 public:
@@ -153,3 +156,4 @@ private:
     // used to update fix between status and position packets
     AP_GPS::GPS_Status next_fix = AP_GPS::NO_FIX;
 };
+#endif

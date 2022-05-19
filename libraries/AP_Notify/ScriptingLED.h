@@ -17,7 +17,7 @@
 #include "RGBLed.h"
 #include <AP_Common/AP_Common.h>
 
-#ifdef ENABLE_SCRIPTING
+#if AP_SCRIPTING_ENABLED
 
 class ScriptingLED: public RGBLed {
 public:
@@ -34,9 +34,10 @@ public:
 
     void get_rgb(uint8_t& red, uint8_t& green, uint8_t& blue);
 
+    bool init() override  {return true;};
+
 protected:
 
-    bool hw_init() override  {return true;};
     bool hw_set_rgb(uint8_t red, uint8_t green, uint8_t blue) override {return true;}
 
 private:

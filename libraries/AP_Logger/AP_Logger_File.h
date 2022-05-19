@@ -22,8 +22,12 @@ class AP_Logger_File : public AP_Logger_Backend
 public:
     // constructor
     AP_Logger_File(AP_Logger &front,
-                   LoggerMessageWriter_DFLogStart *,
-                   const char *log_directory);
+                   LoggerMessageWriter_DFLogStart *);
+
+    static AP_Logger_Backend  *probe(AP_Logger &front,
+                                     LoggerMessageWriter_DFLogStart *ls) {
+        return new AP_Logger_File(front, ls);
+    }
 
     // initialisation
     void Init() override;
@@ -61,6 +65,7 @@ protected:
 
     bool WritesOK() const override;
     bool StartNewLogOK() const override;
+    void PrepForArming_start_logging() override;
 
 private:
     int _write_fd = -1;
@@ -95,6 +100,8 @@ private:
     bool file_exists(const char *filename) const;
     bool log_exists(const uint16_t lognum) const;
 
+    bool dirent_to_log_num(const dirent *de, uint16_t &log_num) const;
+
     // write buffer
     ByteBuffer _writebuf{0};
     const uint16_t _writebuf_chunk = HAL_LOGGER_WRITE_CHUNK_SIZE;
@@ -126,7 +133,16 @@ private:
     // bad fd
     HAL_Semaphore write_fd_semaphore;
 
+    // async erase state
+    struct {
+        bool was_logging;
+        uint16_t log_num;
+    } erase;
+    void erase_next(void);
+
     const char *last_io_operation = "";
+
+    bool start_new_log_pending;
 };
 
 #endif // HAL_LOGGING_FILESYSTEM_ENABLED

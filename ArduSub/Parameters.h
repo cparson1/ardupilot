@@ -4,7 +4,7 @@
 
 #include <AP_Gripper/AP_Gripper.h>
 
-#ifdef ENABLE_SCRIPTING
+#if AP_SCRIPTING_ENABLED
 #include <AP_Scripting/AP_Scripting.h>
 #endif
 
@@ -324,7 +324,7 @@ public:
     AP_Gripper gripper;
 #endif
 
-#if PROXIMITY_ENABLED == ENABLED
+#if HAL_PROXIMITY_ENABLED
     // proximity (aka object avoidance) library
     AP_Proximity proximity;
 #endif
@@ -335,13 +335,9 @@ public:
     // control over servo output ranges
     SRV_Channels servo_channels;
 
-#ifdef ENABLE_SCRIPTING
+#if AP_SCRIPTING_ENABLED
     AP_Scripting scripting;
-#endif // ENABLE_SCRIPTING
-
-    // Airspeed
-    AP_Airspeed airspeed;
-
+#endif // AP_SCRIPTING_ENABLED
 };
 
 extern const AP_Param::Info        var_info[];

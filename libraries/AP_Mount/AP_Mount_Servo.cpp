@@ -70,7 +70,7 @@ void AP_Mount_Servo::update()
         // point mount to a GPS point given by the mission planner
         case MAV_MOUNT_MODE_GPS_POINT:
         {
-            if (calc_angle_to_roi_target(_angle_ef_target_rad, _flags.tilt_control, _flags.pan_control, false)) {
+            if (calc_angle_to_roi_target(_angle_ef_target_rad, _flags.tilt_control, _flags.pan_control, true)) {
                 stabilize();
             }
             break;
@@ -83,7 +83,7 @@ void AP_Mount_Servo::update()
             }
             _state._roi_target = AP::ahrs().get_home();
             _state._roi_target_set = true;
-            if (calc_angle_to_roi_target(_angle_ef_target_rad, _flags.tilt_control, _flags.pan_control, false)) {
+            if (calc_angle_to_roi_target(_angle_ef_target_rad, _flags.tilt_control, _flags.pan_control, true)) {
                 stabilize();
             }
             break;
@@ -92,7 +92,7 @@ void AP_Mount_Servo::update()
             if (calc_angle_to_sysid_target(_angle_ef_target_rad,
                                            _flags.tilt_control,
                                            _flags.pan_control,
-                                           false)) {
+                                           true)) {
                 stabilize();
             }
             break;
@@ -136,7 +136,7 @@ void AP_Mount_Servo::check_servo_map()
 // send_mount_status - called to allow mounts to send their status to GCS using the MOUNT_STATUS message
 void AP_Mount_Servo::send_mount_status(mavlink_channel_t chan)
 {
-    mavlink_msg_mount_status_send(chan, 0, 0, _angle_bf_output_deg.y*100, _angle_bf_output_deg.x*100, _angle_bf_output_deg.z*100);
+    mavlink_msg_mount_status_send(chan, 0, 0, _angle_bf_output_deg.y*100, _angle_bf_output_deg.x*100, _angle_bf_output_deg.z*100, _state._mode);
 }
 
 // stabilize - stabilizes the mount relative to the Earth's frame

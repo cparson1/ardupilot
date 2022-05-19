@@ -23,6 +23,8 @@
 // DMA stream ID for stream_id2 when only one is needed
 #define SHARED_DMA_NONE 255
 
+#ifndef HAL_NO_SHARED_DMA
+
 class ChibiOS::Shared_DMA
 {
 public:
@@ -64,6 +66,9 @@ public:
 
     // display dma contention statistics as text buffer for @SYS/dma.txt
     static void dma_info(ExpandingString &str);
+
+    // return true if a stream ID is shared between two peripherals
+    static bool is_shared(uint8_t stream_id);
 
 private:
     dma_allocate_fn_t allocate;
@@ -108,3 +113,5 @@ private:
         uint32_t transactions;
     } *_contention_stats;
 };
+
+#endif // HAL_NO_SHARED_DMA

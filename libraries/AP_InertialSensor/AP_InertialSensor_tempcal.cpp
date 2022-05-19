@@ -16,13 +16,15 @@
   IMU temperature calibration handling
  */
 
+#define AP_INLINE_VECTOR_OPS
+
 #include "AP_InertialSensor.h"
 
 #if HAL_INS_TEMPERATURE_CAL_ENABLE
-
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Logger/AP_Logger.h>
 #include <AP_Common/ExpandingString.h>
+#include <AP_Notify/AP_Notify.h>
 
 // this scale factor ensures params are easy to work with in GUI parameter editors
 #define SCALE_FACTOR 1.0e6
@@ -376,7 +378,7 @@ void AP_InertialSensor::TCal::update_gyro_learning(const Vector3f &gyro, float t
  */
 void AP_InertialSensor::TCal::Learn::reset(float temperature)
 {
-    memset(state, 0, sizeof(state));
+    memset((void*)&state[0], 0, sizeof(state));
     start_tmax = tcal.temp_max;
     accel_start.zero();
     for (uint8_t i=0; i<ARRAY_SIZE(state); i++) {

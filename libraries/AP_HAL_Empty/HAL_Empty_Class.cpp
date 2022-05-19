@@ -34,6 +34,7 @@ HAL_Empty::HAL_Empty() :
         nullptr,            /* no uartG */
         nullptr,            /* no uartH */
         nullptr,            /* no uartI */
+        nullptr,            /* no uartJ */
         &spiDeviceManager,
         &analogIn,
         &storageDriver,
@@ -50,8 +51,6 @@ HAL_Empty::HAL_Empty() :
 
 void HAL_Empty::run(int argc, char* const argv[], Callbacks* callbacks) const
 {
-    assert(callbacks);
-
     /* initialize all drivers and private members here.
      * up to the programmer to do this in the correct order.
      * Scheduler should likely come first. */

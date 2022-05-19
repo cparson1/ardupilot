@@ -18,10 +18,13 @@
  *   https://gpsd.gitlab.io/gpsd/NMEA.html#_mtw_mean_temperature_of_water
  */
 
+#include "AP_Airspeed_NMEA.h"
+
+#if AP_AIRSPEED_NMEA_ENABLED
+
 #include <AP_Vehicle/AP_Vehicle.h>
 #if APM_BUILD_TYPE(APM_BUILD_Rover) || APM_BUILD_TYPE(APM_BUILD_ArduSub) 
 
-#include "AP_Airspeed_NMEA.h"
 #include "AP_Airspeed.h"
 
 #define TIMEOUT_MS 2000
@@ -41,6 +44,8 @@ bool AP_Airspeed_NMEA::init()
     if (_uart == nullptr) {
         return false;
     }
+
+    set_bus_id(AP_HAL::Device::make_bus_id(AP_HAL::Device::BUS_TYPE_SERIAL,0,0,0));
 
     _uart->begin(serial_manager.find_baudrate(AP_SerialManager::SerialProtocol_AirSpeed, 0));
 
@@ -216,3 +221,5 @@ bool AP_Airspeed_NMEA::decode_latest_term()
 }
 
 #endif  // APM_BUILD_TYPE(APM_BUILD_Rover) || APM_BUILD_TYPE(APM_BUILD_ArduSub) 
+
+#endif  // AP_AIRSPEED_NMEA_ENABLED

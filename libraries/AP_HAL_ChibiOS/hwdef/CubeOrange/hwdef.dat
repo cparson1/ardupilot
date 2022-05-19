@@ -1,11 +1,11 @@
 # hw definition file for processing by chibios_hwdef.py
 
+define HAL_CHIBIOS_ARCH_CUBE 1
+
 # USB setup
 USB_VENDOR 0x2DAE # ONLY FOR USE BY HEX! NOBODY ELSE
 USB_PRODUCT 0x1016
 USB_STRING_MANUFACTURER "Hex/ProfiCNC"
-USB_STRING_PRODUCT "CubeOrange"
-USB_STRING_SERIAL  "%SERIAL%"
 
 # MCU class and specific type
 MCU STM32H7xx STM32H743xx
@@ -17,6 +17,9 @@ OSCILLATOR_HZ 24000000
 APJ_BOARD_ID 140
 
 FLASH_SIZE_KB 2048
+
+# supports upto 8MBits/s
+CANFD_SUPPORTED 8
 
 # with 2M flash we can afford to optimize for speed
 env OPTIMIZE -O2
@@ -146,6 +149,10 @@ PD4 USART2_RTS USART2
 PD5 USART2_TX USART2
 PD6 USART2_RX USART2
 
+# telem1 RTS and CTS as GPIO in alt config 1
+PD3 EXTERN_GPIO4 OUTPUT GPIO(4) ALT(1)
+PD4 EXTERN_GPIO5 OUTPUT GPIO(5) ALT(1)
+
 # The telem2 USART, also with RTS/CTS available.
 # USART3 serial3 telem2
 PD8 USART3_TX USART3
@@ -158,9 +165,9 @@ PD12 USART3_RTS USART3
 PD10 FRAM_CS CS SPEED_VERYLOW
 
 # Now we start defining some PWM pins. We also map these pins to GPIO
-# values, so users can set BRD_PWM_COUNT to choose how many of the PWM
-# outputs on the primary MCU are setup as PWM and how many as
-# GPIOs. To match HAL_PX4 we number the GPIOs for the PWM outputs
+# values, so users can set SERVOx_FUNCTION=-1 to determine which
+# PWM outputs on the primary MCU are set up as GPIOs.
+# To match HAL_PX4 we number the GPIOs for the PWM outputs
 # starting at 50.
 PE14 TIM1_CH4 TIM1 PWM(1) GPIO(50)
 PE13 TIM1_CH3 TIM1 PWM(2) GPIO(51)
@@ -169,14 +176,8 @@ PE9  TIM1_CH1 TIM1 PWM(4) GPIO(53)
 PD13 TIM4_CH2 TIM4 PWM(5) GPIO(54)
 PD14 TIM4_CH3 TIM4 PWM(6) GPIO(55)
 
-define BOARD_PWM_COUNT_DEFAULT 4
-
 # Pin for PWM Voltage Selection
 PB4 PWM_VOLT_SEL OUTPUT HIGH GPIO(3)
-
-# Relays default to use GPIO pins 54 and 55.
-define RELAY1_PIN_DEFAULT 54
-define RELAY2_PIN_DEFAULT 55
 
 # This is the invensense data-ready pin. We don't use it in the
 # default driver.
@@ -302,9 +303,15 @@ define HAL_HAVE_SAFETY_SWITCH 1
 # Enable RAMTROM parameter storage.
 define HAL_WITH_RAMTRON 1
 
-# Setup for the possibility of an IMU heater since the pixhawk2 cube has
-# an IMU heater.
+# Setup the IMU heater
 define HAL_HAVE_IMU_HEATER 1
+define HAL_IMU_TEMP_DEFAULT 45
+define HAL_IMUHEAT_P_DEFAULT 50
+define HAL_IMUHEAT_I_DEFAULT 0.07
+define HAL_IMU_TEMP_MARGIN_LOW_DEFAULT 5
+
+# Enable all IMUs to be used and therefore three active EKF Lanes
+define HAL_EKF_IMU_MASK_DEFAULT 7
 
 # Enable FAT filesystem support (needs a microSD defined via SDMMC).
 define HAL_OS_FATFS_IO 1
@@ -326,3 +333,6 @@ ROMFS io_firmware.bin Tools/IO_Firmware/iofirmware_highpolh.bin
 
 DMA_NOSHARE SPI1* SPI4* USART6*
 
+# for users who have replaced their CubeSolo with a CubeOrange:
+define HAL_OREO_LED_ENABLED 1
+define HAL_SOLO_GIMBAL_ENABLED HAL_MOUNT_ENABLED

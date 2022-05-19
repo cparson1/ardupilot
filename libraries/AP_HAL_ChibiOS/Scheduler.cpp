@@ -16,6 +16,7 @@
  */
 #include <AP_HAL/AP_HAL.h>
 
+#include <hal.h>
 #include "AP_HAL_ChibiOS.h"
 #include "Scheduler.h"
 #include "Util.h"
@@ -39,6 +40,7 @@
 #include "hwdef/common/watchdog.h"
 #include <AP_Filesystem/AP_Filesystem.h>
 #include "shared_dma.h"
+#include <AP_Common/ExpandingString.h>
 
 #if HAL_WITH_IO_MCU
 #include <AP_IOMCU/AP_IOMCU.h>
@@ -142,7 +144,7 @@ void Scheduler::delay_microseconds(uint16_t usec)
         // calling with ticks == 0 causes a hard fault on ChibiOS
         ticks = 1;
     }
-    chThdSleep(ticks); //Suspends Thread for desired microseconds
+    chThdSleep(MAX(ticks,CH_CFG_ST_TIMEDELTA)); //Suspends Thread for desired microseconds
 }
 
 /*
@@ -224,7 +226,7 @@ void Scheduler::register_timer_process(AP_HAL::MemberProc proc)
         _timer_proc[_num_timer_procs] = proc;
         _num_timer_procs++;
     } else {
-        hal.console->printf("Out of timer processes\n");
+        DEV_PRINTF("Out of timer processes\n");
     }
     chBSemSignal(&_timer_semaphore);
 }
@@ -243,7 +245,7 @@ void Scheduler::register_io_process(AP_HAL::MemberProc proc)
         _io_proc[_num_io_procs] = proc;
         _num_io_procs++;
     } else {
-        hal.console->printf("Out of IO processes\n");
+        DEV_PRINTF("Out of IO processes\n");
     }
     chBSemSignal(&_io_semaphore);
 }
@@ -264,7 +266,7 @@ void Scheduler::reboot(bool hold_in_bootloader)
     }
 #endif
 
-#ifndef HAL_NO_LOGGING
+#if HAL_LOGGING_ENABLED
     //stop logging
     if (AP_Logger::get_singleton()) {
         AP::logger().StopLogging();
@@ -346,8 +348,10 @@ void Scheduler::_rcout_thread(void *arg)
     while (!sched->_hal_initialized) {
         sched->delay_microseconds(1000);
     }
+#if HAL_USE_PWM == TRUE
     // trampoline into the rcout thread
     ((RCOutput*)hal.rcout)->rcout_thread();
+#endif
 #endif
 }
 
@@ -385,7 +389,7 @@ void Scheduler::_monitor_thread(void *arg)
         sched->delay(100);
     }
     bool using_watchdog = AP_BoardConfig::watchdog_enabled();
-#ifndef HAL_NO_LOGGING
+#if HAL_LOGGING_ENABLED
     uint8_t log_wd_counter = 0;
 #endif
 
@@ -403,22 +407,25 @@ void Scheduler::_monitor_thread(void *arg)
         if (loop_delay >= 200) {
             // the main loop has been stuck for at least
             // 200ms. Starting logging the main loop state
-#ifndef HAL_NO_LOGGING
+#if HAL_LOGGING_ENABLED
             const AP_HAL::Util::PersistentData &pd = hal.util->persistent_data;
             if (AP_Logger::get_singleton()) {
-                AP::logger().Write("MON", "TimeUS,LDelay,Task,IErr,IErrCnt,IErrLn,MavMsg,MavCmd,SemLine,SPICnt,I2CCnt", "QIbIHHHHHII",
-                                   AP_HAL::micros64(),
-                                   loop_delay,
-                                   pd.scheduler_task,
-                                   pd.internal_errors,
-                                   pd.internal_error_count,
-                                   pd.internal_error_last_line,
-                                   pd.last_mavlink_msgid,
-                                   pd.last_mavlink_cmd,
-                                   pd.semaphore_line,
-                                   pd.spi_count,
-                                   pd.i2c_count);
-                }
+                const struct log_MON mon{
+                    LOG_PACKET_HEADER_INIT(LOG_MON_MSG),
+                    time_us               : AP_HAL::micros64(),
+                    loop_delay            : loop_delay,
+                    current_task          : pd.scheduler_task,
+                    internal_error_mask   : pd.internal_errors,
+                    internal_error_count  : pd.internal_error_count,
+                    internal_error_line   : pd.internal_error_last_line,
+                    mavmsg                : pd.last_mavlink_msgid,
+                    mavcmd                : pd.last_mavlink_cmd,
+                    semline               : pd.semaphore_line,
+                    spicnt                : pd.spi_count,
+                    i2ccnt                : pd.i2c_count
+                };
+                AP::logger().WriteCriticalBlock(&mon, sizeof(mon));
+            }
 #endif
         }
         if (loop_delay >= 500 && !sched->in_expected_delay()) {
@@ -426,29 +433,33 @@ void Scheduler::_monitor_thread(void *arg)
             INTERNAL_ERROR(AP_InternalError::error_t::main_loop_stuck);
         }
 
-#ifndef HAL_NO_LOGGING
+#if HAL_LOGGING_ENABLED
     if (log_wd_counter++ == 10 && hal.util->was_watchdog_reset()) {
         log_wd_counter = 0;
         // log watchdog message once a second
         const AP_HAL::Util::PersistentData &pd = hal.util->last_persistent_data;
-        AP::logger().WriteCritical("WDOG", "TimeUS,Tsk,IE,IEC,IEL,MvMsg,MvCmd,SmLn,FL,FT,FA,FP,ICSR,LR,TN", "QbIHHHHHHHIBIIn",
-                                   AP_HAL::micros64(),
-                                   pd.scheduler_task,
-                                   pd.internal_errors,
-                                   pd.internal_error_count,
-                                   pd.internal_error_last_line,
-                                   pd.last_mavlink_msgid,
-                                   pd.last_mavlink_cmd,
-                                   pd.semaphore_line,
-                                   pd.fault_line,
-                                   pd.fault_type,
-                                   pd.fault_addr,
-                                   pd.fault_thd_prio,
-                                   pd.fault_icsr,
-                                   pd.fault_lr,
-                                   pd.thread_name4);
+        struct log_WDOG wdog{
+            LOG_PACKET_HEADER_INIT(LOG_WDOG_MSG),
+            time_us                  : AP_HAL::micros64(),
+            scheduler_task           : pd.scheduler_task,
+            internal_errors          : pd.internal_errors,
+            internal_error_count     : pd.internal_error_count,
+            internal_error_last_line : pd.internal_error_last_line,
+            last_mavlink_msgid       : pd.last_mavlink_msgid,
+            last_mavlink_cmd         : pd.last_mavlink_cmd,
+            semaphore_line           : pd.semaphore_line,
+            fault_line               : pd.fault_line,
+            fault_type               : pd.fault_type,
+            fault_addr               : pd.fault_addr,
+            fault_thd_prio           : pd.fault_thd_prio,
+            fault_icsr               : pd.fault_icsr,
+            fault_lr                 : pd.fault_lr
+        };
+        memcpy(wdog.thread_name4, pd.thread_name4, ARRAY_SIZE(wdog.thread_name4));
+
+        AP::logger().WriteCriticalBlock(&wdog, sizeof(wdog));
     }
-#endif // HAL_NO_LOGGING
+#endif // HAL_LOGGING_ENABLED
 
 #ifndef IOMCU_FW
     // setup GPIO interrupt quotas
@@ -499,7 +510,7 @@ void Scheduler::_io_thread(void* arg)
     while (!sched->_hal_initialized) {
         sched->delay_microseconds(1000);
     }
-#ifndef HAL_NO_LOGGING
+#if HAL_LOGGING_ENABLED
     uint32_t last_sd_start_ms = AP_HAL::millis();
 #endif
 #if CH_DBG_ENABLE_STACK_CHECK == TRUE
@@ -511,11 +522,11 @@ void Scheduler::_io_thread(void* arg)
         // run registered IO processes
         sched->_run_io();
 
-#if !defined(HAL_NO_LOGGING) || CH_DBG_ENABLE_STACK_CHECK == TRUE
+#if HAL_LOGGING_ENABLED || CH_DBG_ENABLE_STACK_CHECK == TRUE
         uint32_t now = AP_HAL::millis();
 #endif
 
-#ifndef HAL_NO_LOGGING
+#if HAL_LOGGING_ENABLED
         if (!hal.util->get_soft_armed()) {
             // if sdcard hasn't mounted then retry it every 3s in the IO
             // thread when disarmed
@@ -570,16 +581,16 @@ void Scheduler::_storage_thread(void* arg)
         sched->delay_microseconds(10000);
     }
 #if defined STM32H7
-    uint8_t memcheck_counter=0;
+    uint16_t memcheck_counter=0;
 #endif
     while (true) {
-        sched->delay_microseconds(10000);
+        sched->delay_microseconds(1000);
 
         // process any pending storage writes
         hal.storage->_timer_tick();
 
 #if defined STM32H7
-        if (memcheck_counter++ % 50 == 0) {
+        if (memcheck_counter++ % 500 == 0) {
             // run check at 2Hz
             sched->check_low_memory_is_zero();
         }
@@ -624,18 +635,9 @@ void Scheduler::thread_create_trampoline(void *ctx)
     free(t);
 }
 
-/*
-  create a new thread
-*/
-bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_t stack_size, priority_base base, int8_t priority)
+// calculates an integer to be used as the priority for a newly-created thread
+uint8_t Scheduler::calculate_thread_priority(priority_base base, int8_t priority) const
 {
-    // take a copy of the MemberProc, it is freed after thread exits
-    AP_HAL::MemberProc *tproc = (AP_HAL::MemberProc *)malloc(sizeof(proc));
-    if (!tproc) {
-        return false;
-    }
-    *tproc = proc;
-
     uint8_t thread_priority = APM_IO_PRIORITY;
     static const struct {
         priority_base base;
@@ -660,6 +662,23 @@ bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_
             break;
         }
     }
+    return thread_priority;
+}
+
+/*
+  create a new thread
+*/
+bool Scheduler::thread_create(AP_HAL::MemberProc proc, const char *name, uint32_t stack_size, priority_base base, int8_t priority)
+{
+    // take a copy of the MemberProc, it is freed after thread exits
+    AP_HAL::MemberProc *tproc = (AP_HAL::MemberProc *)malloc(sizeof(proc));
+    if (!tproc) {
+        return false;
+    }
+    *tproc = proc;
+
+    const uint8_t thread_priority = calculate_thread_priority(base, priority);
+
     thread_t *thread_ctx = thread_create_alloc(THD_WORKING_AREA_SIZE(stack_size),
                                                name,
                                                thread_priority,
@@ -760,7 +779,7 @@ void Scheduler::check_stack_free(void)
         if (stack_free(tp->wabase) < min_stack) {
             // use task priority for line number. This allows us to
             // identify the task fairly reliably
-            AP::internalerror().error(AP_InternalError::error_t::stack_overflow, tp->prio);
+            AP::internalerror().error(AP_InternalError::error_t::stack_overflow, tp->realprio);
         }
     }
 }

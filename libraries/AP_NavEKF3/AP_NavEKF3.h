@@ -27,6 +27,7 @@
 #include <AP_NavEKF/AP_NavEKF_Source.h>
 
 class NavEKF3_core;
+class EKFGSF_yaw;
 
 class NavEKF3 {
     friend class NavEKF3_core;
@@ -67,32 +68,27 @@ public:
     // return -1 if no primary core selected
     int8_t getPrimaryCoreIMUIndex(void) const;
 
-    // Write the last calculated NE position relative to the reference point (m) for the specified instance.
-    // An out of range instance (eg -1) returns data for the primary instance
+    // Write the last calculated NE position relative to the reference point (m)
     // If a calculated solution is not available, use the best available data and return false
     // If false returned, do not use for flight control
-    bool getPosNE(int8_t instance, Vector2f &posNE) const;
+    bool getPosNE(Vector2f &posNE) const;
 
-    // Write the last calculated D position relative to the reference point (m) for the specified instance.
-    // An out of range instance (eg -1) returns data for the primary instance
+    // Write the last calculated D position relative to the reference point (m)
     // If a calculated solution is not available, use the best available data and return false
     // If false returned, do not use for flight control
-    bool getPosD(int8_t instance, float &posD) const;
+    bool getPosD(float &posD) const;
 
-    // return NED velocity in m/s for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getVelNED(int8_t instance, Vector3f &vel) const;
+    // return NED velocity in m/s
+    void getVelNED(Vector3f &vel) const;
 
-    // return estimate of true airspeed vector in body frame in m/s for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
+    // return estimate of true airspeed vector in body frame in m/s
     // returns false if estimate is unavailable
-    bool getAirSpdVec(int8_t instance, Vector3f &vel) const;
+    bool getAirSpdVec(Vector3f &vel) const;
 
-    // Return the rate of change of vertical position in the down direction (dPosD/dt) in m/s for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
+    // Return the rate of change of vertical position in the down direction (dPosD/dt) in m/s
     // This can be different to the z component of the EKF velocity state because it will fluctuate with height errors and corrections in the EKF
     // but will always be kinematically consistent with the z component of the EKF position state
-    float getPosDownDerivative(int8_t instance) const;
+    float getPosDownDerivative() const;
 
     // return body axis gyro bias estimates in rad/sec for the specified instance
     // An out of range instance (eg -1) returns data for the primary instance
@@ -116,21 +112,19 @@ public:
     // return the scale factor to be applied to navigation velocity gains to compensate for increase in velocity noise with height when using optical flow
     void getEkfControlLimits(float &ekfGndSpdLimit, float &ekfNavVelGainScaler) const;
 
-    // return the NED wind speed estimates in m/s (positive is air moving in the direction of the axis)
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getWind(int8_t instance, Vector3f &wind) const;
+    // return the NED wind speed estimates in m/s (positive is air
+    // moving in the direction of the axis) returns true if wind state
+    // estimation is active
+    bool getWind(Vector3f &wind) const;
 
-    // return earth magnetic field estimates in measurement units / 1000 for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getMagNED(int8_t instance, Vector3f &magNED) const;
+    // return earth magnetic field estimates in measurement units / 1000
+    void getMagNED(Vector3f &magNED) const;
 
-    // return body magnetic field estimates in measurement units / 1000 for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getMagXYZ(int8_t instance, Vector3f &magXYZ) const;
+    // return body magnetic field estimates in measurement units / 1000
+    void getMagXYZ(Vector3f &magXYZ) const;
 
-    // return the sensor in use for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    uint8_t getActiveAirspeed(int8_t instance) const;
+    // return the airspeed sensor in use
+    uint8_t getActiveAirspeed() const;
 
     // Return estimated magnetometer offsets
     // Return true if magnetometer offsets are valid
@@ -142,11 +136,10 @@ public:
     // The getFilterStatus() function provides a more detailed description of data health and must be checked if data is to be used for flight control
     bool getLLH(struct Location &loc) const;
 
-    // Return the latitude and longitude and height used to set the NED origin for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
+    // Return the latitude and longitude and height used to set the NED origin
     // All NED positions calculated by the filter are relative to this location
     // Returns false if the origin has not been set
-    bool getOriginLLH(int8_t instance, struct Location &loc) const;
+    bool getOriginLLH(struct Location &loc) const;
 
     // set the latitude and longitude and height used to set the NED origin
     // All NED positions calculated by the filter will be relative to this location
@@ -158,9 +151,8 @@ public:
     // return false if ground height is not being estimated.
     bool getHAGL(float &HAGL) const;
 
-    // return the Euler roll, pitch and yaw angle in radians for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getEulerAngles(int8_t instance, Vector3f &eulers) const;
+    // return the Euler roll, pitch and yaw angle in radians
+    void getEulerAngles(Vector3f &eulers) const;
 
     // return the transformation matrix from XYZ (body) to NED axes
     void getRotationBodyToNED(Matrix3f &mat) const;
@@ -169,19 +161,17 @@ public:
     void getQuaternionBodyToNED(int8_t instance, Quaternion &quat) const;
 
     // return the quaternions defining the rotation from NED to XYZ (autopilot) axes
-    void getQuaternion(int8_t instance, Quaternion &quat) const;
+    void getQuaternion(Quaternion &quat) const;
 
-    // return the innovations for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getInnovations(int8_t index, Vector3f &velInnov, Vector3f &posInnov, Vector3f &magInnov, float &tasInnov, float &yawInnov) const;
+    // return the innovations
+    bool getInnovations(Vector3f &velInnov, Vector3f &posInnov, Vector3f &magInnov, float &tasInnov, float &yawInnov) const;
 
-    // return the innovation consistency test ratios for the specified instance
-    // An out of range instance (eg -1) returns data for the primary instance
-    void getVariances(int8_t instance, float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar, Vector2f &offset) const;
+    // return the innovation consistency test ratios
+    bool getVariances(float &velVar, float &posVar, float &hgtVar, Vector3f &magVar, float &tasVar, Vector2f &offset) const;
 
-    // get a source's velocity innovations for the specified instance.  Set instance to -1 for the primary instance
+    // get a source's velocity innovations
     // returns true on success and results are placed in innovations and variances arguments
-    bool getVelInnovationsAndVariancesForSource(int8_t instance, AP_NavEKF_Source::SourceXY source, Vector3f &innovations, Vector3f &variances) const WARN_IF_UNUSED;
+    bool getVelInnovationsAndVariancesForSource(AP_NavEKF_Source::SourceXY source, Vector3f &innovations, Vector3f &variances) const WARN_IF_UNUSED;
 
     // should we use the compass? This is public so it can be used for
     // reporting via ahrs.use_compass()
@@ -195,6 +185,9 @@ public:
     // msecFlowMeas is the scheduler time in msec when the optical flow data was received from the sensor.
     // posOffset is the XYZ flow sensor position in the body frame in m
     void writeOptFlowMeas(const uint8_t rawFlowQuality, const Vector2f &rawFlowRates, const Vector2f &rawGyroRates, const uint32_t msecFlowMeas, const Vector3f &posOffset);
+
+    // retrieve latest corrected optical flow samples (used for calibration)
+    bool getOptFlowSample(uint32_t& timeStamp_ms, Vector2f& flowRate, Vector2f& bodyRate, Vector2f& losPred) const;
 
     /*
      * Write body frame linear and angular displacement measurements from a visual odometry sensor
@@ -220,16 +213,6 @@ public:
      * this should not be called at more than the EKF's update rate (50hz or 100hz)
     */
     void writeWheelOdom(float delAng, float delTime, uint32_t timeStamp_ms, const Vector3f &posOffset, float radius);
-
-    /*
-     * Return data for debugging body frame odometry fusion:
-     *
-     * velInnov are the XYZ body frame velocity innovations (m/s)
-     * velInnovVar are the XYZ body frame velocity innovation variances (m/s)**2
-     *
-     * Return the system time stamp of the last update (msec)
-     */
-    uint32_t getBodyFrameOdomDebug(int8_t instance, Vector3f &velInnov, Vector3f &velInnovVar) const;
 
     /*
      * Writes the measurement from a yaw angle sensor
@@ -269,15 +252,6 @@ public:
     */
     void writeExtNavVelData(const Vector3f &vel, float err, uint32_t timeStamp_ms, uint16_t delay_ms);
 
-    // called by vehicle code to specify that a takeoff is happening
-    // causes the EKF to compensate for expected barometer errors due to rotor wash ground interaction
-    // causes the EKF to start the EKF-GSF yaw estimator
-    void setTakeoffExpected(bool val);
-
-    // called by vehicle code to specify that a touchdown is expected to happen
-    // causes the EKF to compensate for expected barometer errors due to ground effect
-    void setTouchdownExpected(bool val);
-
     // Set to true if the terrain underneath is stable enough to be used as a height reference
     // in combination with a range finder. Set to false if the terrain underneath the vehicle
     // cannot be used as a height reference. Use to prevent range finder operation otherwise
@@ -285,8 +259,7 @@ public:
     void setTerrainHgtStable(bool val);
 
     /*
-    return the filter fault status as a bitmasked integer for the specified instance
-    An out of range instance (eg -1) returns data for the primary instance
+    return the filter fault status as a bitmasked integer
      0 = quaternions are NaN
      1 = velocities are NaN
      2 = badly conditioned X magnetometer fusion
@@ -296,19 +269,12 @@ public:
      6 = badly conditioned synthetic sideslip fusion
      7 = filter is not initialised
     */
-    void getFilterFaults(int8_t instance, uint16_t &faults) const;
+    void getFilterFaults(uint16_t &faults) const;
 
     /*
-    return filter gps quality check status for the specified instance
-    An out of range instance (eg -1) returns data for the primary instance
+    return filter status flags
     */
-    void getFilterGpsStatus(int8_t instance, nav_gps_status &faults) const;
-
-    /*
-    return filter status flags for the specified instance
-    An out of range instance (eg -1) returns data for the primary instance
-    */
-    void getFilterStatus(int8_t instance, nav_filter_status &status) const;
+    void getFilterStatus(nav_filter_status &status) const;
 
     // send an EKF_STATUS_REPORT message to GCS
     void send_status_report(mavlink_channel_t chan) const;
@@ -360,17 +326,30 @@ public:
     // write EKF information to on-board logs
     void Log_Write();
 
-    // are we using an external yaw source? This is needed by AHRS attitudes_consistent check
-    bool using_external_yaw(void) const;
+    // are we using (aka fusing) a non-compass yaw?
+    bool using_noncompass_for_yaw() const;
+
+    // are we using (aka fusing) external nav for yaw?
+    bool using_extnav_for_yaw() const;
 
     // check if configured to use GPS for horizontal position estimation
     bool configuredToUseGPSForPosXY(void) const;
-
-    // Writes the default equivalent airspeed in m/s to be used in forward flight if a measured airspeed is required and not available.
-    void writeDefaultAirSpeed(float airspeed);
+    
+    // Writes the default equivalent airspeed and 1-sigma uncertainty in m/s to be used in forward flight if a measured airspeed is required and not available.
+    void writeDefaultAirSpeed(float airspeed, float uncertainty);
 
     // parameter conversion
     void convert_parameters();
+
+    // returns true when the yaw angle has been aligned
+    bool yawAlignmentComplete(void) const;
+
+    // returns true when the state estimates are significantly
+    // degraded by vibration
+    bool isVibrationAffected() const;
+
+    // get a yaw estimator instance
+    const EKFGSF_yaw *get_yawEstimator(void) const;
 
 private:
     uint8_t num_cores; // number of allocated cores
@@ -434,7 +413,6 @@ private:
     AP_Int16 _mag_ef_limit;         // limit on difference between WMM tables and learned earth field.
     AP_Int8 _gsfRunMask;            // mask controlling which EKF3 instances run a separate EKF-GSF yaw estimator
     AP_Int8 _gsfUseMask;            // mask controlling which EKF3 instances will use EKF-GSF yaw estimator data to assit with yaw resets
-    AP_Int16 _gsfResetDelay;        // number of mSec from loss of navigation to requesting a reset using EKF-GSF yaw estimator data
     AP_Int8 _gsfResetMaxCount;      // maximum number of times the EKF3 is allowed to reset it's yaw to the EKF-GSF estimate
     AP_Float _err_thresh;           // lanes have to be consistently better than the primary by at least this threshold to reduce their overall relativeCoreError
     AP_Int32 _affinity;             // bitmask of sensor affinity options
@@ -442,6 +420,10 @@ private:
     AP_Float _ballisticCoef_x;      // ballistic coefficient measured for flow in X body frame directions
     AP_Float _ballisticCoef_y;      // ballistic coefficient measured for flow in Y body frame directions
     AP_Float _momentumDragCoef;     // lift rotor momentum drag coefficient
+    AP_Int8 _betaMask;              // Bitmask controlling when sideslip angle fusion is used to estimate non wind states
+    AP_Float _ognmTestScaleFactor;  // Scale factor applied to the thresholds used by the on ground not moving test
+    AP_Float _baroGndEffectDeadZone;// Dead zone applied to positive baro height innovations when in ground effect (m)
+    AP_Int8 _primary_core;          // initial core number
 
 // Possible values for _flowUse
 #define FLOW_USE_NONE    0
@@ -472,7 +454,6 @@ private:
     const float fScaleFactorPnoise = 1e-10f;       // Process noise added to focal length scale factor state variance at each time step
     const uint8_t flowTimeDeltaAvg_ms = 100;       // average interval between optical flow measurements (msec)
     const uint32_t flowIntervalMax_ms = 100;       // maximum allowable time between flow fusion events
-    const uint16_t gndEffectTimeout_ms = 1000;     // time in msec that ground effect mode is active after being activated
     const float gndEffectBaroScaler = 4.0f;        // scaler applied to the barometer observation variance when ground effect mode is active
     const uint8_t gndGradientSigma = 50;           // RMS terrain gradient percentage assumed by the terrain height estimation
     const uint16_t fusionTimeStep_ms = 10;         // The minimum time interval between covariance predictions and measurement fusions in msec
@@ -480,6 +461,7 @@ private:
     const uint8_t flowIntervalMin_ms = 20;         // The minimum allowed time between measurements from optical flow sensors (msec)
     const uint8_t extNavIntervalMin_ms = 20;       // The minimum allowed time between measurements from external navigation sensors (msec)
     const float maxYawEstVelInnov = 2.0f;          // Maximum acceptable length of the velocity innovation returned by the EKF-GSF yaw estimator (m/s)
+    const uint16_t deadReckonDeclare_ms = 1000;    // Time without equivalent position or velocity observation to constrain drift beore dead reckoning is declared (msec)
 
     // time at start of current filter update
     uint64_t imuSampleTime_us;

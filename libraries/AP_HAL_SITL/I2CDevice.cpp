@@ -60,7 +60,7 @@ uint8_t I2CBus::i2c_buscount;
 
 int I2CBus::_ioctl(uint8_t ioctl_number, void *data)
 {
-    SITL::SITL *sitl = AP::sitl();
+    SITL::SIM *sitl = AP::sitl();
     return sitl->i2c_ioctl(ioctl_number, data);
 }
 
@@ -135,7 +135,7 @@ I2CDevice::I2CDevice(I2CBus &bus, uint8_t address)
     : _bus(bus)
     , _address(address)
 {
-    ::fprintf(stderr, "bus.bus=%u address=0x%02x\n", bus.bus, address);
+    // ::fprintf(stderr, "bus.bus=%u address=0x%02x\n", bus.bus, address);
     set_device_bus(bus.bus);
     set_device_address(address);
 }
@@ -150,10 +150,7 @@ bool I2CDevice::transfer(const uint8_t *send, uint32_t send_len,
     _bus.sem.check_owner();
 
     // combined transfer
-    if (!_transfer(send, send_len, recv, recv_len)) {
-        return false;
-    }
-    return true;
+    return _transfer(send, send_len, recv, recv_len);
 }
 
 bool I2CDevice::_transfer(const uint8_t *send, uint32_t send_len,

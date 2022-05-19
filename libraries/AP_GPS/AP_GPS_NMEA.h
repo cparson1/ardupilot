@@ -46,6 +46,11 @@
 #include "AP_GPS.h"
 #include "GPS_Backend.h"
 
+#ifndef AP_GPS_NMEA_ENABLED
+  #define AP_GPS_NMEA_ENABLED AP_GPS_BACKEND_DEFAULT_ENABLED
+#endif
+
+#if AP_GPS_NMEA_ENABLED
 /// NMEA parser
 ///
 class AP_GPS_NMEA : public AP_GPS_Backend
@@ -73,6 +78,8 @@ private:
         _GPS_SENTENCE_VTG = 96,
         _GPS_SENTENCE_HDT = 128,
         _GPS_SENTENCE_PHD = 138, // extension for AllyStar GPS modules
+        _GPS_SENTENCE_THS = 160, // True heading with quality indicator, available on Trimble MB-Two
+        _GPS_SENTENCE_KSXT = 170, // extension for Unicore, 21 fields
         _GPS_SENTENCE_OTHER = 0
     };
 
@@ -115,9 +122,6 @@ private:
     /// return true if we have a new set of NMEA messages
     bool _have_new_message(void);
 
-    // print a formatted NMEA message to the port
-    bool nmea_printf(const char *fmt, ...) const;
-
     uint8_t _parity;                                                    ///< NMEA message checksum accumulator
     bool _is_checksum_term;                                     ///< current term is the checksum
     char _term[15];                                                     ///< buffer for the current term within the current sentence
@@ -146,9 +150,11 @@ private:
     uint32_t _last_RMC_ms;
     uint32_t _last_GGA_ms;
     uint32_t _last_VTG_ms;
-    uint32_t _last_HDT_ms;
-    uint32_t _last_PHD_12_ms;
-    uint32_t _last_PHD_26_ms;
+    uint32_t _last_yaw_ms;
+    uint32_t _last_vvelocity_ms;
+    uint32_t _last_vaccuracy_ms;
+    uint32_t _last_3D_velocity_ms;
+    uint32_t _last_KSXT_pos_ms;
     uint32_t _last_fix_ms;
 
     /// @name	Init strings
@@ -157,7 +163,6 @@ private:
     ///			in using these strings
     //@{
     static const char _SiRF_init_string[];         ///< init string for SiRF units
-    static const char _MTK_init_string[];                  ///< init string for MediaTek units
     static const char _ublox_init_string[];        ///< init string for ublox units
     //@}
 
@@ -181,6 +186,15 @@ private:
         uint32_t itow;
         int32_t fields[8];
     } _phd;
+
+    /*
+      The KSXT message is an extension from Unicore that gives 3D velocity and yaw
+      example: $KSXT,20211016083433.00,116.31296102,39.95817066,49.4911,223.57,-11.32,330.19,0.024,,1,3,28,27,,,,-0.012,0.021,0.020,,*2D
+     */
+    struct {
+        float fields[21];
+    } _ksxt;
+
 };
 
 #define AP_GPS_NMEA_HEMISPHERE_INIT_STRING \
@@ -190,3 +204,4 @@ private:
         "$JASC,GPVTG,5\r\n" /* VTG at 5Hz */                            \
         "$JASC,GPHDT,5\r\n" /* HDT at 5Hz */                            \
         "$JMODE,SBASR,YES\r\n" /* Enable SBAS */
+#endif

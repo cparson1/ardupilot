@@ -17,6 +17,8 @@
   just enough to be able to debug control logic for new frame types
 */
 
+#define ALLOW_DOUBLE_MATH_FUNCTIONS
+
 #include "SIM_Plane.h"
 
 #include <stdio.h>
@@ -37,7 +39,8 @@ Plane::Plane(const char *frame_str) :
     num_motors = 1;
 
     ground_behavior = GROUND_BEHAVIOR_FWD_ONLY;
-    
+    lock_step_scheduled = true;
+
     if (strstr(frame_str, "-heavy")) {
         mass = 8;
     }
@@ -194,7 +197,7 @@ Vector3f Plane::getTorque(float inputAileron, float inputElevator, float inputRu
 	}
 
 
-	// Add torque to to force misalignment with CG
+	// Add torque to force misalignment with CG
 	// r x F, where r is the distance from CoG to CoL
 	la +=  CGOffset.y * force.z - CGOffset.z * force.y;
 	ma += -CGOffset.x * force.z + CGOffset.z * force.x;

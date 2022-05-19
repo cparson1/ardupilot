@@ -1,5 +1,4 @@
 #include <AP_Common/AP_Common.h>
-#include <SRV_Channel/SRV_Channel.h>
 #include <AP_HAL/HAL.h>
 #include <AP_Logger/AP_Logger.h>
 
@@ -7,6 +6,9 @@
 
 #include "lua_boxed_numerics.h"
 #include <AP_Scripting/lua_generated_bindings.h>
+
+#include <AP_Scripting/AP_Scripting.h>
+#include <string.h>
 
 extern const AP_HAL::HAL& hal;
 
@@ -26,7 +28,7 @@ int check_arguments(lua_State *L, int expected_arguments, const char *fn_name) {
 }
 
 // millis
-static int lua_millis(lua_State *L) {
+int lua_millis(lua_State *L) {
     check_arguments(L, 0, "millis");
 
     new_uint32_t(L);
@@ -36,7 +38,7 @@ static int lua_millis(lua_State *L) {
 }
 
 // micros
-static int lua_micros(lua_State *L) {
+int lua_micros(lua_State *L) {
     check_arguments(L, 0, "micros");
 
     new_uint32_t(L);
@@ -45,14 +47,35 @@ static int lua_micros(lua_State *L) {
     return 1;
 }
 
-static const luaL_Reg global_functions[] =
-{
-    {"millis", lua_millis},
-    {"micros", lua_micros},
-    {NULL, NULL}
-};
+int lua_mission_receive(lua_State *L) {
+    check_arguments(L, 0, "mission_receive");
 
-static int AP_Logger_Write(lua_State *L) {
+    ObjectBuffer<struct AP_Scripting::scripting_mission_cmd> *input = AP::scripting()->mission_data;
+
+    if (input == nullptr) {
+        // no mission items ever received
+        return 0;
+    }
+
+    struct AP_Scripting::scripting_mission_cmd cmd;
+
+    if (!input->pop(cmd)) {
+        // no new item
+        return 0;
+    }
+
+    new_uint32_t(L);
+    *check_uint32_t(L, -1) = cmd.time_ms;
+
+    lua_pushinteger(L, cmd.p1);
+    lua_pushnumber(L, cmd.content_p1);
+    lua_pushnumber(L, cmd.content_p2);
+    lua_pushnumber(L, cmd.content_p3);
+
+    return 5;
+}
+
+int AP_Logger_Write(lua_State *L) {
     AP_Logger * AP_logger = AP_Logger::get_singleton();
     if (AP_logger == nullptr) {
         return luaL_argerror(L, 1, "logger not supported on this firmware");
@@ -230,10 +253,16 @@ static int AP_Logger_Write(lua_State *L) {
         }
         if (charlen != 0) {
             const char *tmp = luaL_checkstring(L, i);
-            if (strlen(tmp) > charlen) {
+            const size_t slen = strlen(tmp);
+            if (slen > charlen) {
                 return luaL_error(L, "arg %i too long for %c format",i,fmt_cat[i-3]);
             }
-            luaL_addlstring(&buffer, (char *)&tmp, charlen);
+            char tstr[charlen];
+            memcpy(tstr, tmp, slen);
+            if (slen < charlen) {
+                memset(&tstr[slen], 0, charlen-slen);
+            }
+            luaL_addlstring(&buffer, tstr, charlen);
         }
     }
 
@@ -245,16 +274,79 @@ static int AP_Logger_Write(lua_State *L) {
     return 0;
 }
 
-const luaL_Reg AP_Logger_functions[] = {
-    {"write", AP_Logger_Write},
-    {NULL, NULL}
-};
+int lua_get_i2c_device(lua_State *L) {
 
-void load_lua_bindings(lua_State *L) {
-    lua_pushstring(L, "logger");
-    luaL_newlib(L, AP_Logger_functions);
-    lua_settable(L, -3);
+    const int args = lua_gettop(L);
+    if (args < 2) {
+        return luaL_argerror(L, args, "require i2c bus and address");
+    }
+    if (args > 4) {
+        return luaL_argerror(L, args, "too many arguments");
+    }
 
-    luaL_setfuncs(L, global_functions, 0);
+    const lua_Integer bus_in = luaL_checkinteger(L, 1);
+    luaL_argcheck(L, ((bus_in >= 0) && (bus_in <= 4)), 1, "bus out of range");
+    const uint8_t bus = static_cast<uint8_t>(bus_in);
+
+    const lua_Integer address_in = luaL_checkinteger(L, 2);
+    luaL_argcheck(L, ((address_in >= 0) && (address_in <= 128)), 2, "address out of range");
+    const uint8_t address = static_cast<uint8_t>(address_in);
+
+    // optional arguments, use the same defaults as the hal get_device function
+    uint32_t bus_clock = 400000;
+    bool use_smbus = false;
+
+    if (args > 2) {
+        bus_clock = coerce_to_uint32_t(L, 3);
+
+        if (args > 3) {
+            use_smbus = static_cast<bool>(lua_toboolean(L, 4));
+        }
+    }
+
+    static_assert(SCRIPTING_MAX_NUM_I2C_DEVICE >= 0, "There cannot be a negative number of I2C devices");
+    if (AP::scripting()->num_i2c_devices >= SCRIPTING_MAX_NUM_I2C_DEVICE) {
+        return luaL_argerror(L, 1, "no i2c devices available");
+    }
+
+    AP::scripting()->_i2c_dev[AP::scripting()->num_i2c_devices] = new AP_HAL::OwnPtr<AP_HAL::I2CDevice>;
+    if (AP::scripting()->_i2c_dev[AP::scripting()->num_i2c_devices] == nullptr) {
+        return luaL_argerror(L, 1, "i2c device nullptr");
+    }
+
+    *AP::scripting()->_i2c_dev[AP::scripting()->num_i2c_devices] = std::move(hal.i2c_mgr->get_device(bus, address, bus_clock, use_smbus));
+
+    if (AP::scripting()->_i2c_dev[AP::scripting()->num_i2c_devices] == nullptr || AP::scripting()->_i2c_dev[AP::scripting()->num_i2c_devices]->get() == nullptr) {
+        return luaL_argerror(L, 1, "i2c device nullptr");
+    }
+
+    new_AP_HAL__I2CDevice(L);
+    *check_AP_HAL__I2CDevice(L, -1) = AP::scripting()->_i2c_dev[AP::scripting()->num_i2c_devices]->get();
+
+    AP::scripting()->num_i2c_devices++;
+
+    return 1;
 }
 
+#if HAL_MAX_CAN_PROTOCOL_DRIVERS
+int lua_get_CAN_device(lua_State *L) {
+
+    check_arguments(L, 1, "CAN:get_device");
+
+    const uint32_t raw_buffer_len = coerce_to_uint32_t(L, 1);
+    luaL_argcheck(L, ((raw_buffer_len >= 1U) && (raw_buffer_len <= 25U)), 1, "argument out of range");
+    const uint32_t buffer_len = static_cast<uint32_t>(raw_buffer_len);
+
+    if (AP::scripting()->_CAN_dev == nullptr) {
+        AP::scripting()->_CAN_dev = new ScriptingCANSensor();
+        if (AP::scripting()->_CAN_dev == nullptr) {
+            return luaL_argerror(L, 1, "CAN device nullptr");
+        }
+    }
+
+    new_ScriptingCANBuffer(L);
+    *check_ScriptingCANBuffer(L, -1) = AP::scripting()->_CAN_dev->add_buffer(buffer_len);
+
+    return 1;
+}
+#endif // HAL_MAX_CAN_PROTOCOL_DRIVERS

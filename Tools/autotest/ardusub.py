@@ -59,6 +59,10 @@ class AutoTestSub(AutoTest):
     def log_name(self):
         return "ArduSub"
 
+    def default_speedup(self):
+        '''Sub seems to be race-free'''
+        return 100
+
     def test_filepath(self):
         return os.path.realpath(__file__)
 
@@ -77,7 +81,7 @@ class AutoTestSub(AutoTest):
     def is_sub(self):
         return True
 
-    def watch_altitude_maintained(self, delta=1, timeout=5.0):
+    def watch_altitude_maintained(self, delta=0.3, timeout=5.0):
         """Watch and wait for the actual altitude to be maintained
 
         Keyword Arguments:
@@ -148,9 +152,21 @@ class AutoTestSub(AutoTest):
 
         # let the vehicle settle (momentum / stopping point shenanigans....)
         self.delay_sim_time(1)
-
         self.watch_altitude_maintained()
 
+        # Make sure the code can handle buoyancy changes
+        self.set_parameter("SIM_BUOYANCY", 10)
+        self.watch_altitude_maintained()
+        self.set_parameter("SIM_BUOYANCY", -10)
+        self.watch_altitude_maintained()
+
+        # Make sure that the ROV will dive with a small input down even if there is a 10N buoyancy force upwards
+        self.set_parameter("SIM_BUOYANCY", 10)
+        self.set_rc(Joystick.Throttle, 1350)
+        self.wait_altitude(altitude_min=-6, altitude_max=-5.5)
+
+        self.set_rc(Joystick.Throttle, 1500)
+        self.watch_altitude_maintained()
         self.disarm_vehicle()
 
     def test_pos_hold(self):
@@ -241,9 +257,7 @@ class AutoTestSub(AutoTest):
         self.disarm_vehicle()
         self.progress("Manual dive OK")
 
-        m = self.mav.recv_match(type='SCALED_PRESSURE3', blocking=True)
-        if m is None:
-            raise NotAchievedException("Did not get SCALED_PRESSURE3")
+        m = self.assert_receive_message('SCALED_PRESSURE3')
         if m.temperature != 2650:
             raise NotAchievedException("Did not get correct TSYS01 temperature")
 
@@ -263,31 +277,19 @@ class AutoTestSub(AutoTest):
         self.progress("Mission OK")
 
     def test_gripper_mission(self):
-        with self.Context(self):
-            self.test_gripper_body()
-
-    def test_gripper_body(self):
-        ex = None
         try:
-            try:
-                self.get_parameter("GRIP_ENABLE", timeout=5)
-            except NotAchievedException:
-                self.progress("Skipping; Gripper not enabled in config?")
-                return
+            self.get_parameter("GRIP_ENABLE", timeout=5)
+        except NotAchievedException:
+            self.progress("Skipping; Gripper not enabled in config?")
+            return
 
-            self.load_mission("sub-gripper-mission.txt")
-            self.change_mode('LOITER')
-            self.wait_ready_to_arm()
-            self.arm_vehicle()
-            self.change_mode('AUTO')
-            self.wait_statustext("Gripper Grabbed", timeout=60)
-            self.wait_statustext("Gripper Released", timeout=60)
-        except Exception as e:
-            self.progress("Exception caught: %s" % (
-                self.get_exception_stacktrace(e)))
-            ex = e
-        if ex is not None:
-            raise ex
+        self.load_mission("sub-gripper-mission.txt")
+        self.change_mode('LOITER')
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.change_mode('AUTO')
+        self.wait_statustext("Gripper Grabbed", timeout=60)
+        self.wait_statustext("Gripper Released", timeout=60)
 
     def dive_set_position_target(self):
         self.change_mode('GUIDED')
@@ -375,10 +377,18 @@ class AutoTestSub(AutoTest):
                 break
         self.initialise_after_reboot_sitl()
 
-    def apply_defaultfile_parameters(self):
-        super(AutoTestSub, self).apply_defaultfile_parameters()
-        # FIXME:
-        self.set_parameter("FS_GCS_ENABLE", 0)
+    def DoubleCircle(self):
+        self.change_mode('CIRCLE')
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.change_mode('STABILIZE')
+        self.change_mode('CIRCLE')
+        self.disarm_vehicle()
+
+    def default_parameter_list(self):
+        ret = super(AutoTestSub, self).default_parameter_list()
+        ret["FS_GCS_ENABLE"] = 0  # FIXME
+        return ret
 
     def disabled_tests(self):
         ret = super(AutoTestSub, self).disabled_tests()
@@ -404,6 +414,10 @@ class AutoTestSub(AutoTest):
             ("GripperMission",
              "Test gripper mission items",
              self.test_gripper_mission),
+
+            ("DoubleCircle",
+             "Test entering circle twice",
+             self.DoubleCircle),
 
             ("MotorThrustHoverParameterIgnore", "Test if we are ignoring MOT_THST_HOVER", self.test_mot_thst_hover_ignore),
 

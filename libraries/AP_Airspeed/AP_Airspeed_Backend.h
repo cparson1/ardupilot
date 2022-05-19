@@ -19,7 +19,8 @@
  */
 
 #include <AP_Common/AP_Common.h>
-#include <AP_HAL/AP_HAL.h>
+#include <AP_HAL/AP_HAL_Boards.h>
+#include <AP_HAL/Semaphores.h>
 #include "AP_Airspeed.h"
 
 class AP_Airspeed_Backend {
@@ -42,14 +43,21 @@ public:
     // return airspeed in m/s if available
     virtual bool get_airspeed(float& airspeed) {return false;}
 
-#if HAL_MSP_AIRSPEED_ENABLED
     virtual void handle_msp(const MSP::msp_airspeed_data_message_t &pkt) {}
-#endif 
 
 protected:
     int8_t get_pin(void) const;
     float get_psi_range(void) const;
     uint8_t get_bus(void) const;
+    bool bus_is_confgured(void) const;
+    uint8_t get_instance(void) const {
+        return instance;
+    }
+
+    // see if voltage correction should be disabled
+    bool disable_voltage_correction(void) const {
+        return (frontend._options.get() & AP_Airspeed::OptionsMask::DISABLE_VOLTAGE_CORRECTION) != 0;
+    }
 
     AP_Airspeed::pitot_tube_order get_tube_order(void) const {
         return AP_Airspeed::pitot_tube_order(frontend.param[instance].tube_order.get());
@@ -82,6 +90,24 @@ protected:
         frontend.param[instance].use.set(use);
     }
 
+    // set bus ID of this instance, for ARSPD_DEVID parameters
+    void set_bus_id(uint32_t id) {
+        frontend.param[instance].bus_id.set(int32_t(id));
+    }
+
+    enum class DevType {
+        SITL     = 0x01,
+        MS4525   = 0x02,
+        MS5525   = 0x03,
+        DLVR     = 0x04,
+        MSP      = 0x05,
+        SDP3X    = 0x06,
+        UAVCAN   = 0x07,
+        ANALOG   = 0x08,
+        NMEA     = 0x09,
+        ASP5033  = 0x0A,
+    };
+    
 private:
     AP_Airspeed &frontend;
     uint8_t instance;

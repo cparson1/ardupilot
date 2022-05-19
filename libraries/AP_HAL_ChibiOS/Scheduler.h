@@ -76,7 +76,7 @@
 #endif
 
 #ifndef MONITOR_THD_WA_SIZE
-#define MONITOR_THD_WA_SIZE 512
+#define MONITOR_THD_WA_SIZE 1024
 #endif
 
 /* Scheduler implementation: */
@@ -170,6 +170,10 @@ private:
     binary_semaphore_t _timer_semaphore;
     binary_semaphore_t _io_semaphore;
 #endif
+
+    // calculates an integer to be used as the priority for a newly-created thread
+    uint8_t calculate_thread_priority(priority_base base, int8_t priority) const;
+
     static void _timer_thread(void *arg);
     static void _rcout_thread(void *arg);
     static void _rcin_thread(void *arg);

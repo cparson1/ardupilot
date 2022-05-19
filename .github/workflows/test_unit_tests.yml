@@ -4,11 +4,16 @@ on: [push, pull_request, workflow_dispatch]
 # paths:
 # - "*"
 # - "!README.md" <-- don't rebuild on doc change
+concurrency:
+  group: ci-${{github.workflow}}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-20.04
-    container: ardupilot/ardupilot-dev-${{ matrix.toolchain }}:latest
+    container:
+      image: ardupilot/ardupilot-dev-${{ matrix.toolchain }}:latest
+      options: --user 1001
     strategy:
       fail-fast: false  # don't cancel if a job from the matrix fails
       matrix:
@@ -18,7 +23,9 @@ jobs:
         ]
         config: [
             unit-tests,
-            python-cleanliness
+            python-cleanliness,
+            sitl
+            # examples,
         ]
     steps:
       # git checkout the PR
@@ -39,21 +46,15 @@ jobs:
           restore-keys: ${{github.workflow}}-ccache-${{ matrix.toolchain }}-  # restore ccache from either previous build on this branch or on master
       - name: setup ccache
         run: |
-          mkdir -p ~/.ccache
-          echo "base_dir = ${GITHUB_WORKSPACE}" > ~/.ccache/ccache.conf
-          echo "compression = true" >> ~/.ccache/ccache.conf
-          echo "compression_level = 6" >> ~/.ccache/ccache.conf
-          echo "max_size = 400M" >> ~/.ccache/ccache.conf
-          ccache -s
-          ccache -z
+          . .github/workflows/ccache.env
       - name: test ${{matrix.config}} ${{ matrix.toolchain }}
         env:
           CI_BUILD_TARGET: ${{matrix.config}}
-        shell: bash
+        shell: 'script -q -e -c "bash {0}"'
         run: |
-          if [[ ${{ matrix.toolchain }} = "clang" ]]; then
-            export CC=clang-7
-            export CXX=clang++-7
+          if [[ ${{ matrix.toolchain }} == "clang" ]]; then
+            export CC=clang
+            export CXX=clang++
           fi
           PATH="/github/home/.local/bin:$PATH"
           Tools/scripts/build_ci.sh

@@ -1,8 +1,6 @@
-#include <AP_HAL/AP_HAL.h>
-
-#if HAL_ENABLE_LIBUAVCAN_DRIVERS
-
 #include "AP_Airspeed_UAVCAN.h"
+
+#if AP_AIRSPEED_UAVCAN_ENABLED
 
 #include <AP_CANManager/AP_CANManager.h>
 #include <AP_UAVCAN/AP_UAVCAN.h>
@@ -63,6 +61,9 @@ AP_Airspeed_Backend* AP_Airspeed_UAVCAN::probe(AP_Airspeed &_frontend, uint8_t _
                                       "Registered UAVCAN Airspeed Node %d on Bus %d\n",
                                       _detected_modules[i].node_id,
                                       _detected_modules[i].ap_uavcan->get_driver_index());
+                backend->set_bus_id(AP_HAL::Device::make_bus_id(AP_HAL::Device::BUS_TYPE_UAVCAN,
+                                                                _detected_modules[i].ap_uavcan->get_driver_index(),
+                                                                _detected_modules[i].node_id, 0));
             }
             break;
         }
@@ -118,7 +119,7 @@ void AP_Airspeed_UAVCAN::handle_airspeed(AP_UAVCAN* ap_uavcan, uint8_t node_id, 
         driver->_pressure = cb.msg->differential_pressure;
         if (!isnan(cb.msg->static_air_temperature) &&
             cb.msg->static_air_temperature > 0) {
-            driver->_temperature = cb.msg->static_air_temperature - C_TO_KELVIN;
+            driver->_temperature = KELVIN_TO_C(cb.msg->static_air_temperature);
             driver->_have_temperature = true;
         }
         driver->_last_sample_time_ms = AP_HAL::millis();
@@ -160,4 +161,4 @@ bool AP_Airspeed_UAVCAN::get_temperature(float &temperature)
     return true;
 }
 
-#endif // HAL_ENABLE_LIBUAVCAN_DRIVERS
+#endif // AP_AIRSPEED_UAVCAN_ENABLED

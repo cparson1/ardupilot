@@ -22,10 +22,10 @@ const AP_Param::GroupInfo AC_HELI_PID::var_info[] = {
 
     // 3 was for uint16 IMAX
 
-    // @Param: VFF
-    // @DisplayName: Velocity FF FeedForward Gain
-    // @Description: Velocity FF Gain which produces an output value that is proportional to the demanded input
-    AP_GROUPINFO("VFF",    4, AC_HELI_PID, _kff, 0),
+    // @Param: FF
+    // @DisplayName: FF FeedForward Gain
+    // @Description: FF Gain which produces an output value that is proportional to the demanded input
+    AP_GROUPINFO("FF",    4, AC_HELI_PID, _kff, 0),
 
     // @Param: IMAX
     // @DisplayName: PID Integral Maximum
@@ -84,7 +84,7 @@ AC_HELI_PID::AC_HELI_PID(float initial_p, float initial_i, float initial_d, floa
 
 void AC_HELI_PID::update_leaky_i(float leak_rate)
 {
-    if(!is_zero(_ki) && !is_zero(_dt)){
+    if (!is_zero(_ki) && !is_zero(_dt)){
 
         // integrator does not leak down below Leak Min
         if (_integrator > _leak_min){

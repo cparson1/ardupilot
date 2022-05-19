@@ -7,13 +7,14 @@
 #include <AP_Param/AP_Param.h>
 #include <stdlib.h>
 #include <cmath>
-#include <AP_Logger/AP_Logger.h>
 #include <Filter/SlewLimiter.h>
 
 #define AC_PID_TFILT_HZ_DEFAULT  0.0f   // default input filter frequency
 #define AC_PID_EFILT_HZ_DEFAULT  0.0f   // default input filter frequency
 #define AC_PID_DFILT_HZ_DEFAULT  20.0f   // default input filter frequency
 #define AC_PID_RESET_TC          0.16f   // Time constant for integrator reset decay to zero
+
+#include "AP_PIDInfo.h"
 
 /// @class	AC_PID
 /// @brief	Copter PID control class
@@ -23,6 +24,8 @@ public:
     // Constructor for PID
     AC_PID(float initial_p, float initial_i, float initial_d, float initial_ff, float initial_imax, float initial_filt_T_hz, float initial_filt_E_hz, float initial_filt_D_hz,
            float dt, float initial_srmax=0, float initial_srtau=1.0);
+
+    CLASS_NO_COPY(AC_PID);
 
     // set_dt - set time step in seconds
     void set_dt(float dt);
@@ -56,9 +59,6 @@ public:
     // reset_I - reset the integrator
     void reset_I();
 
-    // reset_I - reset the integrator smoothly to zero within 0.5 seconds
-    void reset_I_smoothly();
-
     // reset_filter - input filter will be reset to the next value provided to set_input()
     void reset_filter() {
         _flags._reset_filter = true;
@@ -77,10 +77,13 @@ public:
     AP_Float &kP() { return _kp; }
     AP_Float &kI() { return _ki; }
     AP_Float &kD() { return _kd; }
+    AP_Float &kIMAX() { return _kimax; }
     AP_Float &ff() { return _kff;}
     AP_Float &filt_T_hz() { return _filt_T_hz; }
     AP_Float &filt_E_hz() { return _filt_E_hz; }
     AP_Float &filt_D_hz() { return _filt_D_hz; }
+    AP_Float &slew_limit() { return _slew_rate_max; }
+
     float imax() const { return _kimax.get(); }
     float get_filt_alpha(float filt_hz) const;
     float get_filt_T_alpha() const;
@@ -96,6 +99,7 @@ public:
     void filt_T_hz(const float v);
     void filt_E_hz(const float v);
     void filt_D_hz(const float v);
+    void slew_limit(const float v);
 
     // set the desired and actual rates (for logging purposes)
     void set_target_rate(float target) { _pid_info.target = target; }
@@ -105,8 +109,15 @@ public:
     void set_integrator(float target, float measurement, float i);
     void set_integrator(float error, float i);
     void set_integrator(float i);
+    void relax_integrator(float integrator, float time_constant);
 
-    const AP_Logger::PID_Info& get_pid_info(void) const { return _pid_info; }
+    // set slew limiter scale factor
+    void set_slew_limit_scale(int8_t scale) { _slew_limit_scale = scale; }
+
+    // return current slew rate of slew limiter. Will return 0 if SMAX is zero
+    float get_slew_rate(void) const { return _slew_limiter.get_slew_rate(); }
+
+    const AP_PIDInfo& get_pid_info(void) const { return _pid_info; }
 
     // parameter var table
     static const struct AP_Param::GroupInfo var_info[];
@@ -143,8 +154,7 @@ protected:
     float _target;            // target value to enable filtering
     float _error;             // error value to enable filtering
     float _derivative;        // derivative value to enable filtering
-    uint16_t _reset_counter;  // loop counter for reset decay
-    uint64_t _reset_last_update; //time in microseconds of last update to reset_I
+    int8_t _slew_limit_scale;
 
-    AP_Logger::PID_Info _pid_info;
+    AP_PIDInfo _pid_info;
 };

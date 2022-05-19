@@ -24,7 +24,11 @@ void LoggerMessageWriter::reset()
 
 bool LoggerMessageWriter::out_of_time_for_writing_messages() const
 {
+#if HAL_SCHEDULER_ENABLED
     return AP::scheduler().time_available_usec() < MIN_LOOP_TIME_REMAINING_FOR_MESSAGE_WRITE_US;
+#else
+    return false;
+#endif
 }
 
 void LoggerMessageWriter_DFLogStart::reset()
@@ -34,8 +38,12 @@ void LoggerMessageWriter_DFLogStart::reset()
     _fmt_done = false;
     _params_done = false;
     _writesysinfo.reset();
+#if HAL_MISSION_ENABLED
     _writeentiremission.reset();
+#endif
+#if HAL_RALLY_ENABLED
     _writeallrallypoints.reset();
+#endif
 
     stage = Stage::FORMATS;
     next_format_to_send = 0;
@@ -49,7 +57,11 @@ bool LoggerMessageWriter_DFLogStart::out_of_time_for_writing_messages() const
 {
     if (stage == Stage::FORMATS) {
         // write out the FMT messages as fast as we can
+#if HAL_SCHEDULER_ENABLED
         return AP::scheduler().time_available_usec() == 0;
+#else
+        return false;
+#endif
     }
     return LoggerMessageWriter::out_of_time_for_writing_messages();
 }
@@ -122,18 +134,22 @@ void LoggerMessageWriter_DFLogStart::process()
                 return;
             }
         }
+#if HAL_MISSION_ENABLED
         if (!_writeentiremission.finished()) {
             _writeentiremission.process();
             if (!_writeentiremission.finished()) {
                 return;
             }
         }
+#endif
+#if HAL_RALLY_ENABLED
         if (!_writeallrallypoints.finished()) {
             _writeallrallypoints.process();
             if (!_writeallrallypoints.finished()) {
                 return;
             }
         }
+#endif
         stage = Stage::VEHICLE_MESSAGES;
         FALLTHROUGH;
 
@@ -157,6 +173,7 @@ void LoggerMessageWriter_DFLogStart::process()
     _finished = true;
 }
 
+#if HAL_MISSION_ENABLED
 bool LoggerMessageWriter_DFLogStart::writeentiremission()
 {
     if (stage != Stage::DONE) {
@@ -167,7 +184,9 @@ bool LoggerMessageWriter_DFLogStart::writeentiremission()
     _writeentiremission.reset();
     return true;
 }
+#endif
 
+#if HAL_RALLY_ENABLED
 bool LoggerMessageWriter_DFLogStart::writeallrallypoints()
 {
     if (stage != Stage::DONE) {
@@ -178,6 +197,7 @@ bool LoggerMessageWriter_DFLogStart::writeallrallypoints()
     _writeallrallypoints.reset();
     return true;
 }
+#endif
 
 void LoggerMessageWriter_WriteSysInfo::reset()
 {
@@ -191,9 +211,18 @@ void LoggerMessageWriter_WriteSysInfo::process() {
     switch(stage) {
 
     case Stage::FIRMWARE_STRING:
+#ifdef AP_CUSTOM_FIRMWARE_STRING
+        // also log original firmware string if different
+        if (! _logger_backend->Write_MessageF("%s [%s]",
+                                              fwver.fw_string,
+                                              fwver.fw_string_original)) {
+            return; // call me again
+        }
+#else
         if (! _logger_backend->Write_Message(fwver.fw_string)) {
             return; // call me again
         }
+#endif
         stage = Stage::GIT_VERSIONS;
         FALLTHROUGH;
 
@@ -213,9 +242,16 @@ void LoggerMessageWriter_WriteSysInfo::process() {
                 return; // call me again
             }
         }
-        stage = Stage::SYSTEM_ID;
+        stage = Stage::VER;
         FALLTHROUGH;
 
+    case Stage::VER: {
+        if (!_logger_backend->Write_VER()) {
+            return;
+        }
+        stage = Stage::SYSTEM_ID;
+        FALLTHROUGH;
+    }
     case Stage::SYSTEM_ID:
         char sysid[40];
         if (hal.util->get_system_id(sysid)) {

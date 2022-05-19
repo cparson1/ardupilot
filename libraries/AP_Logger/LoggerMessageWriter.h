@@ -31,6 +31,7 @@ private:
     enum class Stage : uint8_t {
         FIRMWARE_STRING = 0,
         GIT_VERSIONS,
+        VER,  // i.e. the "VER" message
         SYSTEM_ID,
         PARAM_SPACE_USED,
         RC_PROTOCOL
@@ -75,17 +76,25 @@ private:
 class LoggerMessageWriter_DFLogStart : public LoggerMessageWriter {
 public:
     LoggerMessageWriter_DFLogStart() :
-        _writesysinfo(),
-        _writeentiremission(),
-        _writeallrallypoints()
+        _writesysinfo()
+#if HAL_MISSION_ENABLED
+        , _writeentiremission()
+#endif
+#if HAL_RALLY_ENABLED
+        , _writeallrallypoints()
+#endif
         {
         }
 
     virtual void set_logger_backend(class AP_Logger_Backend *backend) override {
         LoggerMessageWriter::set_logger_backend(backend);
         _writesysinfo.set_logger_backend(backend);
+#if HAL_MISSION_ENABLED
         _writeentiremission.set_logger_backend(backend);
+#endif
+#if HAL_RALLY_ENABLED
         _writeallrallypoints.set_logger_backend(backend);
+#endif
     }
 
     bool out_of_time_for_writing_messages() const;
@@ -97,8 +106,12 @@ public:
 
     // reset some writers so we push stuff out to logs again.  Will
     // only work if we are in state DONE!
+#if HAL_MISSION_ENABLED
     bool writeentiremission();
+#endif
+#if HAL_RALLY_ENABLED
     bool writeallrallypoints();
+#endif
 
 private:
 
@@ -130,6 +143,10 @@ private:
 
 
     LoggerMessageWriter_WriteSysInfo _writesysinfo;
+#if HAL_MISSION_ENABLED
     LoggerMessageWriter_WriteEntireMission _writeentiremission;
+#endif
+#if HAL_RALLY_ENABLED
     LoggerMessageWriter_WriteAllRallyPoints _writeallrallypoints;
+#endif
 };

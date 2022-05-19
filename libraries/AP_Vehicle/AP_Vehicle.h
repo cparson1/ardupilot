@@ -21,13 +21,16 @@
 
 #include "ModeReason.h" // reasons can't be defined in this header due to circular loops
 
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_Airspeed/AP_Airspeed.h>
 #include <AP_Baro/AP_Baro.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>     // board configuration library
 #include <AP_CANManager/AP_CANManager.h>
 #include <AP_Button/AP_Button.h>
+#include <AP_Compass/AP_Compass.h>
+#include <AP_EFI/AP_EFI.h>
 #include <AP_GPS/AP_GPS.h>
 #include <AP_Generator/AP_Generator.h>
-#include <AP_Logger/AP_Logger.h>
 #include <AP_Notify/AP_Notify.h>                    // Notify library
 #include <AP_Param/AP_Param.h>
 #include <AP_RangeFinder/AP_RangeFinder.h>
@@ -41,11 +44,13 @@
 #include <AP_ESC_Telem/AP_ESC_Telem.h>
 #include <AP_GyroFFT/AP_GyroFFT.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
-#include <AP_RCTelemetry/AP_VideoTX.h>
+#include <AP_VideoTX/AP_VideoTX.h>
 #include <AP_MSP/AP_MSP.h>
 #include <AP_Frsky_Telem/AP_Frsky_Parameters.h>
 #include <AP_ExternalAHRS/AP_ExternalAHRS.h>
 #include <AP_VideoTX/AP_SmartAudio.h>
+#include <SITL/SITL.h>
+#include <AP_CustomRotations/AP_CustomRotations.h>
 #include <AP_IBus_Telem/AP_IBus_Telem.h>
 
 class AP_Vehicle : public AP_HAL::HAL::Callbacks {
@@ -85,6 +90,12 @@ public:
     ModeReason get_control_mode_reason() const {
         return control_mode_reason;
     }
+
+    // perform any notifications required to indicate a mode change
+    // failed due to a bad mode number being supplied.  This can
+    // happen for many reasons - bad mavlink packet and bad mode
+    // parameters for example.
+    void notify_no_such_mode(uint8_t mode_number);
 
     /*
       common parameters for fixed wing aircraft
@@ -179,19 +190,47 @@ public:
     // returns true if the vehicle has crashed
     virtual bool is_crashed() const;
 
+#if AP_SCRIPTING_ENABLED
     /*
       methods to control vehicle for use by scripting
     */
     virtual bool start_takeoff(float alt) { return false; }
     virtual bool set_target_location(const Location& target_loc) { return false; }
+    virtual bool set_target_pos_NED(const Vector3f& target_pos, bool use_yaw, float yaw_deg, bool use_yaw_rate, float yaw_rate_degs, bool yaw_relative, bool terrain_alt) { return false; }
+    virtual bool set_target_posvel_NED(const Vector3f& target_pos, const Vector3f& target_vel) { return false; }
+    virtual bool set_target_posvelaccel_NED(const Vector3f& target_pos, const Vector3f& target_vel, const Vector3f& target_accel, bool use_yaw, float yaw_deg, bool use_yaw_rate, float yaw_rate_degs, bool yaw_relative) { return false; }
     virtual bool set_target_velocity_NED(const Vector3f& vel_ned) { return false; }
+    virtual bool set_target_velaccel_NED(const Vector3f& target_vel, const Vector3f& target_accel, bool use_yaw, float yaw_deg, bool use_yaw_rate, float yaw_rate_degs, bool yaw_relative) { return false; }
     virtual bool set_target_angle_and_climbrate(float roll_deg, float pitch_deg, float yaw_deg, float climb_rate_ms, bool use_yaw_rate, float yaw_rate_degs) { return false; }
+
+    // command throttle percentage and roll, pitch, yaw target
+    // rates. For use with scripting controllers
+    virtual void set_target_throttle_rate_rpy(float throttle_pct, float roll_rate_dps, float pitch_rate_dps, float yaw_rate_dps) {}
+    virtual bool nav_scripting_enable(uint8_t mode) {return false;}
 
     // get target location (for use by scripting)
     virtual bool get_target_location(Location& target_loc) { return false; }
+    virtual bool update_target_location(const Location &old_loc, const Location &new_loc) { return false; }
+
+    // circle mode controls (only used by scripting with Copter)
+    virtual bool get_circle_radius(float &radius_m) { return false; }
+    virtual bool set_circle_rate(float rate_dps) { return false; }
 
     // set steering and throttle (-1 to +1) (for use by scripting with Rover)
     virtual bool set_steering_and_throttle(float steering, float throttle) { return false; }
+
+    // set turn rate in deg/sec and speed in meters/sec (for use by scripting with Rover)
+    virtual bool set_desired_turn_rate_and_speed(float turn_rate, float speed) { return false; }
+
+    // support for NAV_SCRIPT_TIME mission command
+    virtual bool nav_script_time(uint16_t &id, uint8_t &cmd, float &arg1, float &arg2) { return false; }
+    virtual void nav_script_time_done(uint16_t id) {}
+
+    // allow for VTOL velocity matching of a target
+    virtual bool set_velocity_match(const Vector2f &velocity) { return false; }
+
+    // returns true if the EKF failsafe has triggered
+    virtual bool has_ekf_failsafed() const { return false; }
 
     // control outputs enumeration
     enum class ControlOutput {
@@ -210,10 +249,10 @@ public:
     // returns true on success and control_value is set to a value in the range -1 to +1
     virtual bool get_control_output(AP_Vehicle::ControlOutput control_output, float &control_value) { return false; }
 
-    // write out harmonic notch log messages
-    void write_notch_log_messages() const;
+#endif // AP_SCRIPTING_ENABLED
+
     // update the harmonic notch
-    virtual void update_dynamic_notch() {};
+    void update_dynamic_notch(AP_InertialSensor::HarmonicNotch &notch);
 
     // zeroing the RC outputs can prevent unwanted motor movement:
     virtual bool should_zero_rc_outputs_on_reboot() const { return false; }
@@ -244,6 +283,16 @@ public:
     AP_Frsky_Parameters frsky_parameters;
 #endif
 
+    /*
+      Returns the pan and tilt for use by onvif camera in scripting
+     */
+    virtual bool get_pan_tilt_norm(float &pan_norm, float &tilt_norm) const { return false; }
+
+#if OSD_ENABLED
+   // Returns roll and  pitch for OSD Horizon, Plane overrides to correct for VTOL view and fixed wing TRIM_PITCH_CD
+    virtual void get_osd_roll_pitch_rad(float &roll, float &pitch) const;
+#endif
+
 protected:
 
     virtual void init_ardupilot() = 0;
@@ -259,8 +308,7 @@ protected:
 #endif
 
     // main loop scheduler
-    AP_Scheduler scheduler{FUNCTOR_BIND_MEMBER(&AP_Vehicle::fast_loop, void)};
-    virtual void fast_loop();
+    AP_Scheduler scheduler;
 
     // IMU variables
     // Integration time; time last loop took to run
@@ -271,7 +319,9 @@ protected:
     AP_Baro barometer;
     Compass compass;
     AP_InertialSensor ins;
+#if HAL_BUTTON_ENABLED
     AP_Button button;
+#endif
     RangeFinder rangefinder;
 
 #if HAL_IBUS_TELEM_ENABLED
@@ -297,11 +347,7 @@ protected:
     AP_Notify notify;
 
     // Inertial Navigation EKF
-#if AP_AHRS_NAVEKF_AVAILABLE
-    AP_AHRS_NavEKF ahrs;
-#else
-    AP_AHRS_DCM ahrs;
-#endif
+    AP_AHRS ahrs;
 
 #if HAL_HOTT_TELEM_ENABLED
     AP_Hott_Telem hott_telem;
@@ -311,13 +357,15 @@ protected:
     AP_VisualOdom visual_odom;
 #endif
 
+#if HAL_WITH_ESC_TELEM
     AP_ESC_Telem esc_telem;
+#endif
 
 #if HAL_MSP_ENABLED
     AP_MSP msp;
 #endif
 
-#if GENERATOR_ENABLED
+#if HAL_GENERATOR_ENABLED
     AP_Generator generator;
 #endif
 
@@ -329,6 +377,15 @@ protected:
     AP_SmartAudio smartaudio;
 #endif
 
+#if HAL_EFI_ENABLED
+    // EFI Engine Monitor
+    AP_EFI efi;
+#endif
+
+#if AP_AIRSPEED_ENABLED
+    AP_Airspeed airspeed;
+#endif
+
     static const struct AP_Param::GroupInfo var_info[];
     static const struct AP_Scheduler::Task scheduler_tasks[];
 
@@ -336,7 +393,19 @@ protected:
     void publish_osd_info();
 #endif
 
+#if HAL_INS_ACCELCAL_ENABLED
+    // update accel calibration
+    void accel_cal_update();
+#endif
+
+    // call the arming library's update function
+    void update_arming();
+
     ModeReason control_mode_reason = ModeReason::UNKNOWN;
+
+#if AP_SIM_ENABLED
+    SITL::SIM sitl;
+#endif
 
 private:
 
@@ -347,12 +416,20 @@ private:
     // statustext:
     void send_watchdog_reset_statustext();
 
+    // run notch update at either loop rate or 200Hz
+    void update_dynamic_notch_at_specified_rate();
+
     bool likely_flying;         // true if vehicle is probably flying
     uint32_t _last_flying_ms;   // time when likely_flying last went true
+    uint32_t _last_notch_update_ms[HAL_INS_NUM_HARMONIC_NOTCH_FILTERS]; // last time update_dynamic_notch() was run
 
     static AP_Vehicle *_singleton;
 
     bool done_safety_init;
+
+    uint32_t _last_internal_errors;  // backup of AP_InternalError::internal_errors bitmask
+
+    AP_CustomRotations custom_rotations;
 };
 
 namespace AP {

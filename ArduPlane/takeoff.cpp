@@ -36,9 +36,15 @@ bool Plane::auto_takeoff_check(void)
         return false;
     }
 
+    bool do_takeoff_attitude_check = !(g2.flight_options & FlightOptions::DISABLE_TOFF_ATTITUDE_CHK);
+#if HAL_QUADPLANE_ENABLED
+    // disable attitude check on tailsitters
+    do_takeoff_attitude_check = !quadplane.tailsitter.enabled();
+#endif
+
     if (!takeoff_state.launchTimerStarted && !is_zero(g.takeoff_throttle_min_accel)) {
         // we are requiring an X acceleration event to launch
-        float xaccel = SpdHgt_Controller->get_VXdot();
+        float xaccel = TECS_controller.get_VXdot();
         if (g2.takeoff_throttle_accel_count <= 1) {
             if (xaccel < g.takeoff_throttle_min_accel) {
                 goto no_launch;
@@ -60,16 +66,13 @@ bool Plane::auto_takeoff_check(void)
         }
     }
 
-    // let EKF know to start GSF yaw estimator before takeoff movement starts so that yaw angle is better estimated
-    plane.ahrs.setTakeoffExpected(true);
-
     // we've reached the acceleration threshold, so start the timer
     if (!takeoff_state.launchTimerStarted) {
         takeoff_state.launchTimerStarted = true;
         takeoff_state.last_tkoff_arm_time = now;
         if (now - takeoff_state.last_report_ms > 2000) {
             gcs().send_text(MAV_SEVERITY_INFO, "Armed AUTO, xaccel = %.1f m/s/s, waiting %.1f sec",
-                              (double)SpdHgt_Controller->get_VXdot(), (double)(wait_time_ms*0.001f));
+                              (double)TECS_controller.get_VXdot(), (double)(wait_time_ms*0.001f));
             takeoff_state.last_report_ms = now;
         }
     }
@@ -83,8 +86,7 @@ bool Plane::auto_takeoff_check(void)
         goto no_launch;
     }
 
-    if (!quadplane.is_tailsitter() &&
-        !(g2.flight_options & FlightOptions::DISABLE_TOFF_ATTITUDE_CHK)) {
+    if (do_takeoff_attitude_check) {
         // Check aircraft attitude for bad launch
         if (ahrs.pitch_sensor <= -3000 || ahrs.pitch_sensor >= 4500 ||
             (!fly_inverted() && labs(ahrs.roll_sensor) > 3000)) {
@@ -168,8 +170,14 @@ void Plane::takeoff_calc_pitch(void)
             nav_pitch_cd = takeoff_pitch_min_cd;
         }
     } else {
-        nav_pitch_cd = ((gps.ground_speed()*100) / (float)aparm.airspeed_cruise_cm) * auto_state.takeoff_pitch_cd;
-        nav_pitch_cd = constrain_int32(nav_pitch_cd, 500, auto_state.takeoff_pitch_cd);
+        if (g.takeoff_rotate_speed > 0) {
+            // Rise off ground takeoff so delay rotation until ground speed indicates adequate airspeed
+            nav_pitch_cd = ((gps.ground_speed()*100) / (float)aparm.airspeed_cruise_cm) * auto_state.takeoff_pitch_cd;
+            nav_pitch_cd = constrain_int32(nav_pitch_cd, 500, auto_state.takeoff_pitch_cd); 
+        } else {
+            // Doing hand or catapult launch so need at least 5 deg pitch to prevent initial height loss
+            nav_pitch_cd = MAX(auto_state.takeoff_pitch_cd, 500);
+        }
     }
 
     if (aparm.stall_prevention != 0) {
@@ -265,24 +273,6 @@ return_zero:
     }
     return 0;
 }
-
-
-/*
-  called when an auto-takeoff is complete
- */
-void Plane::complete_auto_takeoff(void)
-{
-#if GEOFENCE_ENABLED == ENABLED
-    if (g.fence_autoenable != FenceAutoEnable::OFF) {
-        if (! geofence_set_enabled(true)) {
-            gcs().send_text(MAV_SEVERITY_NOTICE, "Enable fence failed (cannot autoenable");
-        } else {
-            gcs().send_text(MAV_SEVERITY_INFO, "Fence enabled (autoenabled)");
-        }
-    }
-#endif
-}
-
 
 #if LANDING_GEAR_ENABLED == ENABLED
 /*

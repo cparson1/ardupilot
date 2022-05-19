@@ -13,10 +13,14 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 /*
- *   AP_BoardConfig - px4 driver loading and setup
+ *   AP_BoardConfig - driver loading and setup
  */
 
+
 #include <AP_HAL/AP_HAL.h>
+#if CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS
+#include <hal.h>
+#endif
 #include "AP_BoardConfig.h"
 #include <GCS_MAVLink/GCS.h>
 #include <AP_Math/crc.h>
@@ -44,6 +48,24 @@ void AP_BoardConfig::board_init_safety()
         }
     }
 #endif
+}
+
+/*
+  init debug pins. We set debug pins as input if BRD_OPTIONS bit for debug enable is not set
+  this prevents possible ESD issues on the debug pins
+ */
+void AP_BoardConfig::board_init_debug()
+{
+#ifndef HAL_BUILD_AP_PERIPH
+    if ((_options & BOARD_OPTION_DEBUG_ENABLE) == 0) {
+#ifdef HAL_GPIO_PIN_JTCK_SWCLK
+        palSetLineMode(HAL_GPIO_PIN_JTCK_SWCLK, PAL_MODE_INPUT);
+#endif
+#ifdef HAL_GPIO_PIN_JTMS_SWDIO
+        palSetLineMode(HAL_GPIO_PIN_JTMS_SWDIO, PAL_MODE_INPUT);
+#endif
+    }
+#endif // HAL_BUILD_AP_PERIPH
 }
 
 
@@ -263,6 +285,10 @@ bool AP_BoardConfig::check_ms5611(const char* devname) {
 #define INV2_WHOAMI_ICM20948 0xEA
 #define INV2_WHOAMI_ICM20649 0xE1
 
+#define INV3REG_WHOAMI        0x75
+
+#define INV3_WHOAMI_ICM42688  0x47
+
 /*
   validation of the board type
  */
@@ -290,7 +316,7 @@ void AP_BoardConfig::validate_board_type(void)
         config_error("Pixhawk2 requires FMUv3 firmware");        
 #endif
         state.board_type.set(PX4_BOARD_PIXHAWK2);
-        hal.console->printf("Forced PIXHAWK2\n");
+        DEV_PRINTF("Forced PIXHAWK2\n");
     }
 #endif
 
@@ -323,7 +349,7 @@ void AP_BoardConfig::board_autodetect(void)
 #if defined(CONFIG_ARCH_BOARD_PX4FMU_V1)
     // only one choice
     state.board_type.set(PX4_BOARD_PX4V1);
-    hal.console->printf("Detected PX4v1\n");
+    DEV_PRINTF("Detected PX4v1\n");
 
 #elif defined(CONFIG_ARCH_BOARD_PX4FMU_V2) || defined(HAL_CHIBIOS_ARCH_FMUV3)
     if ((spi_check_register("mpu6000_ext", MPUREG_WHOAMI, MPU_WHOAMI_MPU60X0) ||
@@ -337,13 +363,13 @@ void AP_BoardConfig::board_autodetect(void)
          spi_check_register_inv2("icm20948_ext", INV2REG_WHOAMI, INV2_WHOAMI_ICM20948))) {
         // Pixhawk2 has LSM303D and MPUxxxx on external bus
         state.board_type.set(PX4_BOARD_PIXHAWK2);
-        hal.console->printf("Detected PIXHAWK2\n");
+        DEV_PRINTF("Detected PIXHAWK2\n");
     } else if ((spi_check_register("icm20608-am", MPUREG_WHOAMI, MPU_WHOAMI_ICM20608) ||
                 spi_check_register("icm20608-am", MPUREG_WHOAMI, MPU_WHOAMI_ICM20602)) &&
                spi_check_register("mpu9250", MPUREG_WHOAMI, MPU_WHOAMI_MPU9250)) {
         // PHMINI has an ICM20608 and MPU9250 on sensor bus
         state.board_type.set(PX4_BOARD_PHMINI);
-        hal.console->printf("Detected PixhawkMini\n");
+        DEV_PRINTF("Detected PixhawkMini\n");
     } else if (spi_check_register("lsm9ds0_am", LSMREG_WHOAMI, LSM_WHOAMI_LSM303D) &&
                (spi_check_register("mpu6000", MPUREG_WHOAMI, MPU_WHOAMI_MPU60X0) ||
                 spi_check_register("icm20608", MPUREG_WHOAMI, MPU_WHOAMI_ICM20608) ||
@@ -352,52 +378,52 @@ void AP_BoardConfig::board_autodetect(void)
 
         // classic or upgraded Pixhawk1
         state.board_type.set(PX4_BOARD_PIXHAWK);
-        hal.console->printf("Detected Pixhawk\n");
+        DEV_PRINTF("Detected Pixhawk\n");
     } else {
         config_error("Unable to detect board type");
     }
 #elif defined(CONFIG_ARCH_BOARD_PX4FMU_V4) || defined(HAL_CHIBIOS_ARCH_FMUV4)
     // only one choice
     state.board_type.set_and_notify(PX4_BOARD_PIXRACER);
-    hal.console->printf("Detected Pixracer\n");
+    DEV_PRINTF("Detected Pixracer\n");
 #elif defined(HAL_CHIBIOS_ARCH_MINDPXV2)
     // only one choice
     state.board_type.set_and_notify(PX4_BOARD_MINDPXV2);
-    hal.console->printf("Detected MindPX-V2\n");
+    DEV_PRINTF("Detected MindPX-V2\n");
 #elif defined(CONFIG_ARCH_BOARD_PX4FMU_V4PRO) || defined(HAL_CHIBIOS_ARCH_FMUV4PRO)
     // only one choice
     state.board_type.set_and_notify(PX4_BOARD_PIXHAWK_PRO);
-    hal.console->printf("Detected Pixhawk Pro\n");	
+    DEV_PRINTF("Detected Pixhawk Pro\n");	
 #elif defined(CONFIG_ARCH_BOARD_AEROFC_V1)
     state.board_type.set_and_notify(PX4_BOARD_AEROFC);
-    hal.console->printf("Detected Aero FC\n");
+    DEV_PRINTF("Detected Aero FC\n");
 #elif defined(HAL_CHIBIOS_ARCH_FMUV5)
     state.board_type.set_and_notify(PX4_BOARD_FMUV5);
-    hal.console->printf("Detected FMUv5\n");
+    DEV_PRINTF("Detected FMUv5\n");
 #elif defined(HAL_CHIBIOS_ARCH_FMUV6)
     state.board_type.set_and_notify(PX4_BOARD_FMUV5);
-    hal.console->printf("Detected FMUv6\n");
+    DEV_PRINTF("Detected FMUv6\n");
 #elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V51) || defined(HAL_CHIBIOS_ARCH_BRAINV51)
     state.board_type.set_and_notify(VRX_BOARD_BRAIN51);
-    hal.console->printf("Detected VR Brain 5.1\n");
+    DEV_PRINTF("Detected VR Brain 5.1\n");
 #elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V52) || defined(HAL_CHIBIOS_ARCH_BRAINV52)
     state.board_type.set_and_notify(VRX_BOARD_BRAIN52);
-    hal.console->printf("Detected VR Brain 5.2\n");
+    DEV_PRINTF("Detected VR Brain 5.2\n");
 #elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V52E)
     state.board_type.set_and_notify(VRX_BOARD_BRAIN52E);
-    hal.console->printf("Detected VR Brain 5.2E\n");
+    DEV_PRINTF("Detected VR Brain 5.2E\n");
 #elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V51) || defined(HAL_CHIBIOS_ARCH_UBRAINV51)
     state.board_type.set_and_notify(VRX_BOARD_UBRAIN51);
-    hal.console->printf("Detected VR Micro Brain 5.1\n");
+    DEV_PRINTF("Detected VR Micro Brain 5.1\n");
 #elif defined(CONFIG_ARCH_BOARD_VRUBRAIN_V52)
     state.board_type.set_and_notify(VRX_BOARD_UBRAIN52);
-    hal.console->printf("Detected VR Micro Brain 5.2\n");
+    DEV_PRINTF("Detected VR Micro Brain 5.2\n");
 #elif defined(CONFIG_ARCH_BOARD_VRCORE_V10) || defined(HAL_CHIBIOS_ARCH_COREV10)
     state.board_type.set_and_notify(VRX_BOARD_CORE10);
-    hal.console->printf("Detected VR Core 1.0\n");
+    DEV_PRINTF("Detected VR Core 1.0\n");
 #elif defined(CONFIG_ARCH_BOARD_VRBRAIN_V54) || defined(HAL_CHIBIOS_ARCH_BRAINV54)
     state.board_type.set_and_notify(VRX_BOARD_BRAIN54);
-    hal.console->printf("Detected VR Brain 5.4\n");
+    DEV_PRINTF("Detected VR Brain 5.4\n");
 #endif
 
 }
